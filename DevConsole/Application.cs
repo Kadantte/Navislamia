@@ -1,51 +1,75 @@
-﻿using Configuration;
-using DevConsole.Properties;
-using Navislamia.Command;
-using Navislamia.Game;
-using Notification;
-using Serilog.Events;
-using Spectre.Console;
-using Spectre.Console.Cli;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
+using System.Threading;
+using Navislamia.Game;
+using Navislamia.Notification;
 using System.Threading.Tasks;
+using Configuration;
+using DevConsole.Exceptions;
+using DevConsole.Properties;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using Navislamia.Command;
 
 namespace DevConsole
 {
-    public class Application : IApplication
+    public class Application : IHostedService
     {
-        private IConfigurationService configurationService;
-        private INotificationService notificationService;
-        private IGameService gameService;
-        private ICommandService commandService;
+        private readonly IHostEnvironment _environment;
+        private readonly IGameModule _gameModule;
+        private readonly NetworkOptions _networkOptions;
+        private readonly INotificationModule _notificationModule;
+        private readonly ICommandModule _commandModule;
 
-        public Application(IConfigurationService configurationService, INotificationService notificationService, IGameService gameService, ICommandService commandService)
+        public Application(IHostEnvironment environment, IGameModule gameModule,
+            IOptions<NetworkOptions> networkOptions, INotificationModule notificationModule, ICommandModule commandModule)
         {
-            this.configurationService = configurationService;
-            this.notificationService = notificationService;
-            this.gameService = gameService;
-            this.commandService = commandService;
+            _environment = environment;
+            _gameModule = gameModule;
+            _notificationModule = notificationModule;
+            _networkOptions = networkOptions.Value;
+            _commandModule = commandModule;
         }
 
-        public int Run()
+        public Task StartAsync(CancellationToken cancellationToken)
         {
-            notificationService.WriteString($"{Resources.arcadia}\n\nNavislamia starting...\n");
+            _notificationModule.WriteString($"\n{Resources.arcadia}");
+            _notificationModule.WriteString("Navislamia starting...\n");
+            _notificationModule.WriteMarkup($"Environment: [bold yellow]{_environment.EnvironmentName}[/]\n");
 
-            string ip = configurationService.Get<string>("io.ip", "Network", "127.0.0.1");
-            short port = configurationService.Get<short>("io.port", "Network", 4502);
-            int backlog = configurationService.Get<int>("io.backlog", "Network", 100);
-
-            if (gameService.Start(ip, port, backlog) >= 1)
+            var ip = _networkOptions.Game.Ip;
+            var port = _networkOptions.Game.Port;
+            var backlog = _networkOptions.Backlog;
+            
+            if (string.IsNullOrWhiteSpace(ip) || port <= 0)
             {
-                notificationService.WriteMarkup("[bold red]Failed to start the game service![/]");
+                throw new InvalidConfigurationException("IP and/or Port or is either invalid or missing in configuration");
+            }
+            
+            try
+            {
+                _gameModule.Start(ip, port, backlog);
 
-                return 1;
+               
+            }
+            catch (Exception e)
+            {
+                _notificationModule.WriteMarkup($"[bold red]Failed to start the game service![/] {e.Message}");
+                StopAsync(cancellationToken);
             }
 
-            return 0;
+            _commandModule.Init();
+
+            while (true)
+                if (_commandModule.Wait() == 0)
+                    break;
+
+            //Console.ReadLine();
+            return null;
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            return null;
         }
     }
 }

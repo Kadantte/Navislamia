@@ -1,12 +1,7 @@
-﻿using Notification;
+﻿using Navislamia.Notification;
 using Spectre.Console;
 using Spectre.Console.Cli;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Navislamia.Command.Commands
 {
@@ -17,9 +12,9 @@ namespace Navislamia.Command.Commands
 
     public class AboutPrinter : IAbout
     {
-        INotificationService notificaitonSVC;
+        INotificationModule notificaitonSVC;
 
-        public AboutPrinter(INotificationService notificationService) => notificaitonSVC = notificationService;
+        public AboutPrinter(INotificationModule notificationModule) => notificaitonSVC = notificationModule;
 
         public void Print()
         {
@@ -29,7 +24,7 @@ namespace Navislamia.Command.Commands
             mainTbl.AddColumn("Description");
             mainTbl.AddColumn("Contributors and Advisors");
             mainTbl.AddColumns("Third Party Software");
-            mainTbl.AddRow("Navislamia is a .NET 5 reimplementation of the Arcadia Framework", "- Aodai\n- iSmokeDrow\n- Glandu2\n- Graphos\n- Mango\n- Sandro\n- Pyrok", "- Moonsharp\n- Newtonsoft.JSON\n- Serilog\n- Spectre.Console\n- Dapper");
+            mainTbl.AddRow("Navislamia is a .NET 7 reimplementation of the Arcadia Framework", "- Aodai\n- iSmokeDrow\n- Glandu2\n- Graphos\n- Mango\n- Sandro\n- Pyrok\n- Nexitis", "- Moonsharp\n- Newtonsoft.JSON\n- Serilog\n- Spectre.Console\n- Dapper");
 
             mainTbl.Border = TableBorder.Ascii;
 

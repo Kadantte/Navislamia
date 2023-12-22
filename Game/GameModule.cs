@@ -1,128 +1,88 @@
 ﻿using System;
-using System.Text;
-using System.Threading.Tasks;
 using System.IO;
+using Microsoft.Extensions.Options;
 
-using Configuration;
-using Database;
-using Maps;
-using Network;
-using Notification;
-using Scripting;
-
-using Serilog.Events;
-using System.Collections.Generic;
-using Navislamia.World;
-using System.Threading;
-using Navislamia.Game.DbLoaders;
-using Navislamia.Database.Interfaces;
+using Navislamia.Configuration.Options;
+using Navislamia.Game.Models.Navislamia;
+using Navislamia.Game.Network;
+using Navislamia.Game.Repositories;
+using Navislamia.Notification;
+using Navislamia.Game.Maps;
+using Navislamia.Game.Scripting;
+using Navislamia.Game.Services;
 
 namespace Navislamia.Game
 {
-    public class GameModule : IGameService
+    public class GameModule : IGameModule
     {
-        IConfigurationService configSVC;
-        IWorldService worldSVC;
-        IDatabaseService dbSVC;
-        IScriptingService scriptSVC;
-        INotificationService notificationSVC;
-        IMapService mapSVC;
-        INetworkService networkSVC;
+        private readonly ScriptContent _scriptContent;
+        private readonly INotificationModule _notificationModule;
+        private readonly MapContent _mapContent;
+        private readonly INetworkModule _networkModule;
+        private readonly ScriptOptions _scriptOptions;
+        private readonly MapOptions _mapOptions;
 
-        public GameModule() { }
+        private readonly IWorldRepository _worldRepository;
+        private readonly ICharacterService _characterService;
+        private readonly WorldEntity _worldEntity;
 
-        public GameModule(IConfigurationService configurationService, IWorldService contentService, INotificationService notificationService, IDatabaseService databaseService, 
-            IScriptingService scriptingService, IMapService mapService, INetworkService networkService)
+        public GameModule(INotificationModule notificationModule, INetworkModule networkModule,
+            IOptions<ScriptOptions> scriptOptions, IOptions<MapOptions> mapOptions, IWorldRepository worldRepository, ICharacterService characterService)
         {
-            configSVC = configurationService;
-            worldSVC = contentService;
-            notificationSVC = notificationService;
-            dbSVC = databaseService;
-            scriptSVC = scriptingService;
-            mapSVC = mapService;
-            networkSVC = networkService;
+            _scriptOptions = scriptOptions.Value;
+            _mapOptions = mapOptions.Value;
+            _notificationModule = notificationModule;            
+            _networkModule = networkModule;
+            _worldRepository = worldRepository;
+            _characterService = characterService;
+
+            _worldEntity = worldRepository.LoadWorldIntoMemory();
+
+            _scriptContent = new ScriptContent(_notificationModule);
+            
+            _mapContent = new MapContent(mapOptions, _notificationModule, _scriptContent);
         }
 
-        public int Start(string ip, int port, int backlog)
-        {
-            if (!configSVC.Get<bool>("skip_loading", "Scripts", false))
+        public void Start(string ip, int port, int backlog)
+        {   
+            if (!LoadScripts(_scriptOptions.SkipLoading))
+                return;
+
+            if (!LoadMaps(_mapOptions.SkipLoading))
+                return;
+
+            _networkModule.Initialize();
+            var maxTime = DateTime.UtcNow.AddSeconds(30);
+            
+            while (!_networkModule.IsReady)
             {
-                if (!scriptSVC.Initialize())
-                {
-                    notificationSVC.WriteError("Failed to start script service!");
-
-                    return 1;
-                }
-
-                notificationSVC.WriteSuccess(new string[] { $"Script service started successfully!", $"[green]{scriptSVC.ScriptCount}[/] scripts loaded!" }, true);
+                // Do nothing
             }
-            else
-                notificationSVC.WriteWarning("Script loading disabled!");
-
-            if (!configSVC.Get<bool>("skip_loading", "Maps", false))
-            {
-                if (!mapSVC.Initialize())
-                {
-                    notificationSVC.WriteError("Failed to start the map service!");
-
-                    return 1;
-                }
-
-                notificationSVC.WriteSuccess(new string[] { $"Map service started successfully!", $"[green]{mapSVC.MapCount.CX + mapSVC.MapCount.CY}[/] files loaded!" }, true);
-            }
-            else
-                notificationSVC.WriteWarning("Map loading disabled!");
-
-            if (!loadDbRepositories())
-                return 1;
-
-            if (networkSVC.Initialize() > 0)
-                return 1;
-
-            int curTime = 0;
-            int maxTime = 5000;
-            while (!networkSVC.Ready)
-            {
-                if (curTime >= maxTime)
-                {
-                    notificationSVC.WriteError("Network service timed out!");
-                    return 1;
-                }
-
-                curTime += 250;
-
-                // Wait for the auth/upload servers to respond
-                Thread.Sleep(250);
-            }
-
-            networkSVC.StartListener();
-
-            return 0;
+                
+            _networkModule.StartListener();
         }
 
-        bool loadDbRepositories()
+        private bool LoadMaps(bool skip)
         {
-            StringBuilder sb = new StringBuilder("Loading database repositories...\n");
+            if (skip)
+            {
+                _notificationModule.WriteWarning("Map loading disabled!");
+                return true;
+            }
 
-            GameContent.Strings = new StringLoader(dbSVC, notificationSVC).Strings;
+            // TODO: MapContent should be printing messages
+            return _mapContent.Initialize($"{Directory.GetCurrentDirectory()}\\Maps");
+        }
 
-            sb.AppendLine($"- [orange3]{GameContent.Strings.Count}[/] strings loaded!");
+        private bool LoadScripts(bool skip)
+        {
+            if (skip)
+            {
+                _notificationModule.WriteWarning("Script loading disabled!");
+                return true;
+            }
 
-            var monsterLoader = new MonsterLoader(dbSVC, notificationSVC);
-
-            GameContent.MonsterInfo = monsterLoader.Monsters;
-
-            sb.AppendLine($"- [orange3]{monsterLoader.Skills.Count}[/] monster skills loaded!");
-            sb.AppendLine($"- [orange3]{monsterLoader.Drops.Count}[/] monster drops loaded!");
-            sb.AppendLine($"- [orange3]{monsterLoader.Monsters.Count}[/] monsters loaded!");
-
-            GameContent.NpcInfo = new NpcLoader(dbSVC, notificationSVC).Npc;
-
-            sb.AppendLine($"- [orange3]{GameContent.NpcInfo.Count}[/] npc loaded!");
-
-            notificationSVC.WriteMarkup(sb.ToString());
-
-            return true;
+            return _scriptContent.Init();
         }
     }
 }

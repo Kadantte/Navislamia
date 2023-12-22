@@ -1,55 +1,54 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Configuration;
-using Notification;
-
+using Navislamia.Notification;
 using Spectre.Console;
 using Spectre.Console.Cli;
-
-
 using Navislamia.Command.Commands;
-using Navislamia.Command.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace Navislamia.Command
 {
-    public class CommandModule : ICommandService
+    public class CommandModule : ICommandModule
     {
         CommandApp commandApp;
-
-        IConfigurationService configSVC;
-        INotificationService notificationSVC;
+        INotificationModule notificationSVC;
+        IConfiguration _configService;
 
         string _input;
 
-        public string Input 
+        public string Input
         {
             get => _input;
             set => _input = value;
         }
 
-        public CommandModule(IConfigurationService configurationService, INotificationService notificaftionService)
+        public CommandModule(INotificationModule notificaftionModule, IConfiguration configurationService)
         {
-            configSVC = configurationService;
-            notificationSVC = notificaftionService;
+            notificationSVC = notificaftionModule;
+            _configService = configurationService;
         }
 
         // TODO: register all CommandModule.Commands and Implementations here!
-        public int Init(ITypeRegistrar registrar)
+        public int Init()
         {
-            registrar.Register(typeof(IGetter), typeof(ConfigurationGetter));
-            registrar.Register(typeof(IConfigurationCreator), typeof(ConfigurationCreator));
+            var registrations = new ServiceCollection();
+            var registrar = new TypeRegistrar(registrations);
+
+            
+            registrar.RegisterInstance(typeof(INotificationModule), notificationSVC);
+            registrar.RegisterInstance(typeof(IConfiguration), _configService);
+
             registrar.Register(typeof(IAbout), typeof(AboutPrinter));
+            registrar.Register(typeof(IConfigurationGetter), typeof(ConfigurationGetter));
+            registrar.Register(typeof(IConfigurationSetter), typeof(ConfigurationSetter));
 
             commandApp = new CommandApp(registrar);
 
             commandApp.Configure(config =>
             {
                 config.AddCommand<About>("about").WithDescription("Print information about the Navislamia Framework").WithExample(new string[] { "about" });
-                config.AddCommand<GetConfiguration>("get").WithAlias("GetConfig").WithDescription("Print configuration value").WithExample(new string[] { "get", "io.ip" });
-                config.AddCommand<CreateDefaultConfig>("create_default_config").WithDescription("Create a new or overwrite existing Configuration.json with option t").WithExample(new string[] { "create_default_config", ".\\" });         
+                config.AddCommand<GetConfiguration>("get").WithDescription("Get stored configuration value by category and name").WithExample(new[] { "get", "server", "name" });
+                config.AddCommand<SetConfiguration>("set").WithDescription("Set stored configuration value by category and name").WithExample(new[] { "set", "server", "name", "navislamia" });
             });
 
             return 0;
@@ -73,7 +72,7 @@ namespace Navislamia.Command
 
                 ConsoleKeyInfo key = Console.ReadKey(true);
 
-                if (key.Key == ConsoleKey.Oem3)
+                if (key.KeyChar == '`')
                 {
                     string input = AnsiConsole.Ask<string>("~ Command: ");
 
@@ -86,7 +85,7 @@ namespace Navislamia.Command
                 }
                 else if (key.Key == ConsoleKey.Escape)
                 {
-                    notificationSVC.WriteString("Navislamia shutting down...");
+                    notificationSVC.WriteWarning("Navislamia shutting down...");
                     break;
                 }
             }

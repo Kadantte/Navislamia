@@ -1,18 +1,14 @@
-﻿using Configuration;
-using Notification;
-using System;
+﻿using Navislamia.Notification;
 
 namespace Navislamia.World
 {
-    public class WorldModule : IWorldService
+    public class WorldModule : IWorldModule
     {
-        IConfigurationService configSVC;
-        INotificationService notificationSVC;
+        INotificationModule notificationSVC;
 
-        public WorldModule(IConfigurationService configurationService, INotificationService notificationService)
+        public WorldModule(INotificationModule notificationModule)
         {
-            configSVC = configurationService;
-            notificationSVC = notificationService;
+            notificationSVC = notificationModule;
         }
 
     }
